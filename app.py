@@ -29,44 +29,47 @@ def callback():
     except InvalidSignatureError:
         abort(400)
     return 'OK'
-
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    # 當用戶輸入「抽」的時候
     if event.message.text == "抽":
         try:
-            # 1. 向 GitHub API 請求檔案清單
+            # 1. 自動向 GitHub API 請求檔案清單
             response = requests.get(API_URL)
+            
+            # 如果失敗，通常是因為私有專案沒權限或流量限制
             if response.status_code != 200:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="暫時無法讀取相簿，請檢查網路。"))
+                print(f"!!! GitHub API Error: {response.status_code}")
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="讀取相簿失敗，請確認 Repo 是否為公開。"))
                 return
             
             files = response.json()
             
-            # 2. 過濾出圖片檔案 (支援 jpeg, jpg, png, 並忽略大小寫)
+            # 2. 自動過濾出所有圖片 (不管檔名是什麼，只要是 .jpeg/.jpg/.png 都要)
             photo_pool = [
                 f['name'] for f in files 
                 if f['name'].lower().endswith(('.jpeg', '.jpg', '.png'))
             ]
             
             if not photo_pool:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="相簿裡目前沒有照片喔！"))
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="相簿裡沒照片喔！"))
                 return
 
-            # 3. 隨機抽一張並組合完整網址
+            # 3. 隨機抽一張
             picked = random.choice(photo_pool)
-            img_url = BASE_URL + picked
+            raw_github_url = BASE_URL + picked
             
-            # 4. 回傳圖片訊息
+            # 4. 使用縮圖代理 (這行一定要留著，不然手機照片太大會破圖)
+            compressed_url = f"https://images.weserv.nl/?url={raw_github_url}&w=800&q=60&output=jpg"
+            
             image_message = ImageSendMessage(
-                original_content_url=img_url,
-                preview_image_url=img_url
+                original_content_url=compressed_url,
+                preview_image_url=compressed_url
             )
             line_bot_api.reply_message(event.reply_token, image_message)
 
         except Exception as e:
             print(f"Error: {e}")
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="系統忙碌中，請稍後再試。"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤。"))
 
 if __name__ == "__main__":
     app.run()
