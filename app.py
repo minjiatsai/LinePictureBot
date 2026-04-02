@@ -1,6 +1,6 @@
 import os
 import random
-import requests  # 新增：用於串接 GitHub API
+import requests
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -8,16 +8,13 @@ from linebot.models import MessageEvent, TextMessage, ImageSendMessage, TextSend
 
 app = Flask(__name__)
 
-# 從環境變數讀取密鑰
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 
-# GitHub 相關設定
+# --- 請再次確認這裡的大小寫是否與 GitHub 完全一致 ---
 GITHUB_USER = "minjiatsai"
 GITHUB_REPO = "LinePictureBot"
-# 原始圖片下載網址前綴
 BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main/"
-# GitHub API 網址 (用於獲取檔案清單)
 API_URL = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/"
 
 @app.route("/callback", methods=['POST'])
@@ -29,36 +26,33 @@ def callback():
     except InvalidSignatureError:
         abort(400)
     return 'OK'
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     if event.message.text == "抽":
+        photo_pool = []
+        
+        # 嘗試 1：自動從 GitHub API 抓取
         try:
-            # 1. 自動向 GitHub API 請求檔案清單
-            response = requests.get(API_URL)
-            
-            # 如果失敗，通常是因為私有專案沒權限或流量限制
-            if response.status_code != 200:
-                print(f"!!! GitHub API Error: {response.status_code}")
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="讀取相簿失敗，請確認 Repo 是否為公開。"))
-                return
-            
-            files = response.json()
-            
-            # 2. 自動過濾出所有圖片 (不管檔名是什麼，只要是 .jpeg/.jpg/.png 都要)
-            photo_pool = [
-                f['name'] for f in files 
-                if f['name'].lower().endswith(('.jpeg', '.jpg', '.png'))
-            ]
-            
-            if not photo_pool:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="相簿裡沒照片喔！"))
-                return
+            response = requests.get(API_URL, timeout=5)
+            if response.status_code == 200:
+                files = response.json()
+                photo_pool = [f['name'] for f in files if f['name'].lower().endswith(('.jpeg', '.jpg', '.png'))]
+                print("成功從 API 取得照片清單")
+        except Exception as e:
+            print(f"API 抓取出錯: {e}")
 
-            # 3. 隨機抽一張
+        # 嘗試 2：如果 API 失敗 (photo_pool 是空的)，改用手動清單 (備援機制)
+        if not photo_pool:
+            print("切換至手動備援清單")
+            # 這裡填入你目前確定的幾張檔名，確保 API 壞掉時也能抽
+            photo_pool = ["IMG_6267.jpeg", "IMG_6268.jpeg", "IMG_6269.jpeg"]
+
+        try:
             picked = random.choice(photo_pool)
             raw_github_url = BASE_URL + picked
             
-            # 4. 使用縮圖代理 (這行一定要留著，不然手機照片太大會破圖)
+            # 使用縮圖代理解決破圖問題
             compressed_url = f"https://images.weserv.nl/?url={raw_github_url}&w=800&q=60&output=jpg"
             
             image_message = ImageSendMessage(
@@ -66,10 +60,9 @@ def handle_message(event):
                 preview_image_url=compressed_url
             )
             line_bot_api.reply_message(event.reply_token, image_message)
-
+            
         except Exception as e:
-            print(f"Error: {e}")
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤。"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="目前無法抽獎，請稍後再試。"))
 
 if __name__ == "__main__":
     app.run()
