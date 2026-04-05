@@ -42,7 +42,7 @@ def handle_message(event):
         # 2. 如果留言含有「抽」→ 出圖
         if "抽" in text:
             start_num = 6267
-            end_num = 6333
+            end_num = 6316
 
             photo_pool = [f"IMG_{i}.jpeg" for i in range(start_num, end_num + 1)]
             picked = random.choice(photo_pool)
