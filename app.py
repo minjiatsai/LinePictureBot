@@ -30,7 +30,7 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     # 當用戶輸入「抽」的時候
-    if event.message.text == "抽":
+    if "抽" in event.message.text:
         try:
             # 1. 定義你的圖片數字範圍
             start_num = 6267
@@ -56,7 +56,7 @@ def handle_message(event):
 
         except Exception as e:
             print(f"Error: {e}")
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="抽獎發生錯誤，請稍後再試。"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
 
 if __name__ == "__main__":
     app.run()
