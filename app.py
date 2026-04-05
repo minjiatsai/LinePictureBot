@@ -34,7 +34,7 @@ def handle_message(event):
         try:
             # 1. 定義你的圖片數字範圍
             start_num = 6267
-            end_num = 6295
+            end_num = 6333
             
             # 2. 自動生成所有檔名清單 (例如: IMG_6267.jpeg, IMG_6268.jpeg ...)
             photo_pool = [f"IMG_{i}.jpeg" for i in range(start_num, end_num + 1)]
