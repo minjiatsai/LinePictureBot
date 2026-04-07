@@ -1,3 +1,4 @@
+import requests
 import os
 import random
 from flask import Flask, request, abort
@@ -29,9 +30,8 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text or ""
-
+    
     try:
-        # 1. 如果留言含有「侯爺」→ 回文字
         if "侯爺" in text:
             line_bot_api.reply_message(
                 event.reply_token,
@@ -39,30 +39,39 @@ def handle_message(event):
             )
             return
 
-        # 2. 如果留言含有「抽」→ 出圖
         if "抽" in text:
-            start_num = 6267
-            end_num = 6316
+            # --- 修正後的邏輯：直接去 GitHub 抓清單 ---
+            api_url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/"
+            response = requests.get(api_url)
+            
+            if response.status_code == 200:
+                files = response.json()
+                # 只篩選出是檔案且副檔名是圖片的 (排除 .py, README 等)
+                photo_pool = [f['name'] for f in files if f['type'] == 'file' and f['name'].lower().endswith(('.jpg', '.jpeg', '.png'))]
+                
+                if not photo_pool:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="圖庫空空如也..."))
+                    return
+                
+                # 從「真的存在」的檔案清單裡抽
+                picked = random.choice(photo_pool)
+                raw_github_url = BASE_URL + picked
+                
+                # 這裡繼續用你原本的壓縮服務
+                compressed_url = f"https://images.weserv.nl/?url={raw_github_url}&w=800&q=60&output=jpg"
 
-            photo_pool = [f"IMG_{i}.jpeg" for i in range(start_num, end_num + 1)]
-            picked = random.choice(photo_pool)
-            raw_github_url = BASE_URL + picked
-
-            compressed_url = f"https://images.weserv.nl/?url={raw_github_url}&w=800&q=60&output=jpg"
-
-            image_message = ImageSendMessage(
-                original_content_url=compressed_url,
-                preview_image_url=compressed_url
-            )
-            line_bot_api.reply_message(event.reply_token, image_message)
+                image_message = ImageSendMessage(
+                    original_content_url=compressed_url,
+                    preview_image_url=compressed_url
+                )
+                line_bot_api.reply_message(event.reply_token, image_message)
+            else:
+                # 如果 API 失敗（例如被限流），回報錯誤
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="暫時無法連接圖庫。"))
             return
 
     except Exception as e:
         print(f"Error: {e}")
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="發生錯誤，請稍後再試。")
-        )
 
 if __name__ == "__main__":
     app.run()
